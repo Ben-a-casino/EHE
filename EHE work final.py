@@ -65,14 +65,15 @@ if USE_NLTK:
 
         lemmatizer = WordNetLemmatizer()
         stop_words = set(stopwords.words('english'))
+        nltk_enabled = True
     except ImportError as e:
         logger.error("NLTK or required libraries are not installed. Disabling NLTK functionality.")
-        USE_NLTK = False
+        nltk_enabled = False
 
 # ----------------------------- Utility Functions ----------------------------- #
 def clean_text(text):
     """Clean and normalize text."""
-    if not isinstance(text, str):  # Handle non-string values
+    if not isinstance(text, str):
         return "Not available"
     return ' '.join(text.split()).replace("\n", " ").strip()
 
@@ -140,14 +141,12 @@ def is_similar(a, b, threshold=0.5):
 # ----------------------------- Job Processing ----------------------------- #
 def extract_skills_nltk(text):
     """Extract skills from text using NLTK."""
-    if not USE_NLTK:
+    if not nltk_enabled:
         return []
     try:
         tokens = word_tokenize(text)
-        filtered_tokens = [lemmatizer.lemmatize(w.lower()) for w in tokens if w.isalpha() and w.lower() not in stop_words]
-        tagged_tokens = pos_tag(filtered_tokens)
-        skills = [word for word, pos in tagged_tokens if pos.startswith('NN')]
-        return skills
+        tagged_tokens = pos_tag([lemmatizer.lemmatize(w.lower()) for w in tokens if w.isalpha() and w.lower() not in stop_words])
+        return [word for word, pos in tagged_tokens if pos.startswith('NN')]
     except Exception as e:
         logger.error(f"Error during NLTK skill extraction: {e}")
         return []
@@ -158,8 +157,7 @@ def extract_skills_tensorflow(text):
         return []
     try:
         ner_results = nlp(text)
-        skills = [entity['word'] for entity in ner_results if entity['entity_group'] == 'MISC']
-        return skills
+        return [entity['word'] for entity in ner_results if entity['entity_group'] == 'MISC']
     except Exception as e:
         logger.error(f"Error during TensorFlow skill extraction: {e}")
         return []
@@ -203,32 +201,20 @@ def process_job_title(search_term, location, combined_doc, skills_doc, all_skill
                 if responsibility.strip():
                     combined_doc.add_paragraph(responsibility.strip())
 
-            # Extract skills using NLTK and TensorFlow
             skills_nltk = extract_skills_nltk(responsibilities)
             skills_tf = extract_skills_tensorflow(responsibilities)
             skills = list(set(skills_nltk + skills_tf))
-            if not skills:  # If no skills extracted, use predefined skills
-                skills = [
-                    'Strong knowledge of OSHA, state, and federal regulations',
-                    'Experience with LOTO, confined spaces, and PSM',
-                    'Knowledge of wastewater and stormwater regulations',
-                    'Strong communication, leadership, and problem-solving skills',
-                    'Proficiency with Microsoft Office Suite'
-                ]
             job_skills.extend(skills)
             all_skills.extend(skills)
 
-        # Generate and add a skills histogram and list format to both documents
         if job_skills:
             skills_df = pd.DataFrame(job_skills, columns=['Skill'])
             skill_counts = skills_df['Skill'].value_counts()
 
-            # Add skills list in the main document
             combined_doc.add_paragraph("Skills List:")
             for skill, count in skill_counts.items():
                 combined_doc.add_paragraph(f"{skill} ({count})")
 
-            # Generate histogram and skill list for this title
             generate_histogram_and_skill_list(job_skills, search_term, skills_doc)
     else:
         print(f"No similar jobs found for '{search_term}'.")
